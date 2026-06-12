@@ -69,6 +69,7 @@ const child = spawn(config.childCmd, config.childArgs, {
   stdio: ["pipe", "pipe", "pipe"],
   env: { ...process.env },
   windowsHide: true,
+  shell: process.platform === "win32" && /\.(cmd|bat)$/i.test(config.childCmd),
 });
 
 let childBuf = "";
