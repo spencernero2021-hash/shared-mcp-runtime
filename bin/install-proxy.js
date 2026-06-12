@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +17,8 @@ Options:
   --name <name>         MCP server name to install or update
   --child-cmd <cmd>     Child MCP command, e.g. npx.cmd, node, python
   --child-arg <arg>     Child MCP argument. Repeat for each argument.
+  --child <command>     Full child command line, e.g. "npx.cmd -y @playwright/mcp@latest"
+  --interactive, -i     Prompt for values interactively
   --force              Replace an existing server entry with the same name
   --dry-run            Print the updated config without writing it
   --no-backup          Do not create a .bak timestamp backup before writing
@@ -23,7 +26,50 @@ Options:
 
 Example:
   shared-mcp-install --config D:\\ClaudeCode\\.mcp.json --name playwright --child-cmd npx.cmd --child-arg -y --child-arg @playwright/mcp@latest
+
+Interactive:
+  shared-mcp-install --interactive
 `);
+}
+
+function splitCommandLine(input) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  let escaped = false;
+
+  for (const char of input.trim()) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if ((char === '"' || char === "'") && !quote) {
+      quote = char;
+      continue;
+    }
+    if (char === quote) {
+      quote = null;
+      continue;
+    }
+    if (/\s/.test(char) && !quote) {
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+
+  if (escaped) current += "\\";
+  if (current) parts.push(current);
+  if (quote) throw new Error("Unclosed quote in child command");
+  return parts;
 }
 
 function parseArgs(argv) {
@@ -41,6 +87,8 @@ function parseArgs(argv) {
 
     if (key === "--help" || key === "-h") {
       out.help = true;
+    } else if (key === "--interactive" || key === "-i") {
+      out.interactive = true;
     } else if (key === "--force") {
       out.force = true;
     } else if (key === "--dry-run") {
@@ -59,9 +107,18 @@ function parseArgs(argv) {
     } else if (key === "--child-arg") {
       out.childArgs.push(value);
       if (inlineValue === undefined) i++;
+    } else if (key === "--child") {
+      out.child = value;
+      if (inlineValue === undefined) i++;
     } else {
       throw new Error(`Unknown argument: ${raw}`);
     }
+  }
+
+  if (out.child) {
+    const parts = splitCommandLine(out.child);
+    out.childCmd = out.childCmd || parts[0];
+    if (out.childArgs.length === 0) out.childArgs = parts.slice(1);
   }
 
   return out;
@@ -104,11 +161,68 @@ function backupConfig(configPath) {
   return backupPath;
 }
 
-function main() {
+function defaultConfigPath() {
+  const candidates = [];
+  if (process.platform === "win32") {
+    candidates.push("D:\\ClaudeCode\\.mcp.json");
+  }
+  candidates.push(path.join(process.cwd(), ".mcp.json"));
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
+
+function defaultChildCommand(name) {
+  if (name === "playwright") {
+    return process.platform === "win32" ? "npx.cmd -y @playwright/mcp@latest" : "npx -y @playwright/mcp@latest";
+  }
+  return process.platform === "win32" ? "npx.cmd -y <mcp-package>" : "npx -y <mcp-package>";
+}
+
+async function promptForOptions(options) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const ask = async (label, defaultValue = "") => {
+      const suffix = defaultValue ? ` (${defaultValue})` : "";
+      const answer = await rl.question(`${label}${suffix}: `);
+      return answer.trim() || defaultValue;
+    };
+    const yesNo = async (label, defaultValue = true) => {
+      const suffix = defaultValue ? "Y/n" : "y/N";
+      const answer = (await rl.question(`${label} (${suffix}): `)).trim().toLowerCase();
+      if (!answer) return defaultValue;
+      return answer === "y" || answer === "yes";
+    };
+
+    options.configPath ||= await ask("MCP config path", defaultConfigPath());
+    options.name ||= await ask("MCP server name", "playwright");
+
+    if (!options.childCmd || options.childArgs.length === 0) {
+      const child = await ask("Original child MCP command", defaultChildCommand(options.name));
+      const parts = splitCommandLine(child);
+      options.childCmd = parts[0];
+      options.childArgs = parts.slice(1);
+    }
+
+    const configPath = path.resolve(options.configPath);
+    const existingConfig = readConfig(configPath);
+    if (existingConfig.mcpServers?.[options.name] && !options.force) {
+      options.force = await yesNo(`MCP server '${options.name}' already exists. Replace it`, false);
+    }
+    options.backup = await yesNo("Create backup before writing", options.backup);
+  } finally {
+    rl.close();
+  }
+  return options;
+}
+
+async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     usage();
     return;
+  }
+
+  if (options.interactive) {
+    await promptForOptions(options);
   }
 
   requireValue(options, "configPath");
@@ -143,7 +257,7 @@ function main() {
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(`shared-mcp-install: ${error.message}`);
   console.error("Run with --help for usage.");

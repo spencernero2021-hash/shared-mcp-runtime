@@ -91,10 +91,8 @@ async function runInstallerSmoke() {
     configPath,
     "--name",
     "dummy",
-    "--child-cmd",
-    "node",
-    "--child-arg",
-    "dummy-child.js",
+    "--child",
+    "node dummy-child.js",
     "--no-backup",
   ], { cwd: new URL(".", import.meta.url), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 

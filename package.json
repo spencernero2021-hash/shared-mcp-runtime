@@ -1,6 +1,6 @@
 {
-  "name": "@codex/shared-mcp-runtime",
-  "version": "0.3.0",
+  "name": "shared-mcp-runtime",
+  "version": "0.4.0",
   "description": "Stage-aware MCP tool exposure runtime for reducing MCP Tax",
   "type": "module",
   "main": "index.js",
@@ -14,6 +14,9 @@
   "exports": {
     ".": "./index.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "files": [
     "index.js",
     "mcp.proxy.js",
@@ -23,5 +26,13 @@
     "docs/"
   ],
   "keywords": ["mcp", "tool-exposure", "context-engineering", "agent", "claude-code"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spencernero2021-hash/shared-mcp-runtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spencernero2021-hash/shared-mcp-runtime/issues"
+  },
+  "homepage": "https://github.com/spencernero2021-hash/shared-mcp-runtime#readme",
   "license": "MIT"
 }

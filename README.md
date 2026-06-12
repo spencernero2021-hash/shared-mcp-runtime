@@ -74,7 +74,7 @@ the child server's source code.
 ## Basic Usage
 
 ```js
-import { createToolExposureRuntime } from "@codex/shared-mcp-runtime";
+import { createToolExposureRuntime } from "shared-mcp-runtime";
 
 const exposure = createToolExposureRuntime({
   name: "example-mcp",
@@ -131,9 +131,31 @@ On Windows, use `npx.cmd` as the child command if your MCP host does not resolve
 
 ## One-Command Install
 
-Use `shared-mcp-install` to write a dynamic proxy entry into an MCP config file.
-It wraps an existing child MCP server without changing the child server's source
-code.
+The easiest path is interactive install:
+
+```bash
+npx shared-mcp-runtime@latest --interactive
+```
+
+Equivalent npm exec form:
+
+```bash
+npm exec --package shared-mcp-runtime@latest -- shared-mcp-install --interactive
+```
+
+It asks for the MCP config path, server name, and the original child MCP command,
+then writes the dynamic proxy entry for you.
+
+You can also use `shared-mcp-install` after global install:
+
+```bash
+npm install -g shared-mcp-runtime
+shared-mcp-install --interactive
+```
+
+For scripted setup, pass all values directly. The installer writes a dynamic
+proxy entry into an MCP config file and wraps an existing child MCP server
+without changing the child server's source code.
 
 ```bash
 shared-mcp-install \
@@ -162,6 +184,12 @@ For local development without a global install:
 
 ```bash
 node ./bin/install-proxy.js --config /path/to/.mcp.json --name playwright --child-cmd npx --child-arg -y --child-arg @playwright/mcp@latest
+```
+
+You can preview without writing:
+
+```bash
+npx shared-mcp-runtime@latest --config /path/to/.mcp.json --name playwright --child "npx -y @playwright/mcp@latest" --dry-run
 ```
 
 Example `.mcp.json` entry:
@@ -203,6 +231,23 @@ Skill/prompt: task routing and workflow policy
 
 ```bash
 npm test
+```
+
+## Publish
+
+The package is prepared for npm as `shared-mcp-runtime`.
+
+Before the first publish:
+
+```bash
+npm login
+npm publish
+```
+
+To verify the publish package contents without publishing:
+
+```bash
+npm pack --dry-run
 ```
 
 ## Context Engineering Report
