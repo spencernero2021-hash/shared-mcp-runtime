@@ -74,12 +74,10 @@ the child server's source code.
 ## Basic Usage
 
 ```js
-import { createMcpServer } from "@codex/shared-mcp-runtime";
+import { createToolExposureRuntime } from "@codex/shared-mcp-runtime";
 
-const server = createMcpServer({
+const exposure = createToolExposureRuntime({
   name: "example-mcp",
-  version: "0.1.0",
-  listChanged: true,
   enableTaskContext: true,
   toolProvider: async (ctx) => {
     if (!ctx.task.hasTask) {
@@ -110,7 +108,7 @@ const server = createMcpServer({
   },
 });
 
-server.run();
+await exposure.refreshTools();
 ```
 
 In this example, `hello` is not visible while the server is idle. It appears only
@@ -152,11 +150,11 @@ Example `.mcp.json` entry:
 
 ## What This Is Not
 
-This project is not primarily a generic JSON-RPC boilerplate library.
+This project is not a generic JSON-RPC boilerplate library.
 
-It does include the protocol handling needed to run MCP servers, but that is an
-implementation detail. The main purpose is dynamic tool exposure and MCP context
-governance.
+The core module does not try to own MCP transport/protocol handling. It focuses
+on dynamic tool exposure and MCP context governance. Host adapters can connect
+these primitives to stdio MCP, HTTP MCP, SDK-based servers, or custom harnesses.
 
 For heavy execution work, a good pattern is:
 

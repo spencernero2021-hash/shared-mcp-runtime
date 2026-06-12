@@ -28,7 +28,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { createMcpServer } from "./index.js";
+import { createInterface } from "node:readline";
+import { createToolExposureRuntime } from "./index.js";
 
 // Parse CLI args. Support both "--key value" and "--key=value" because
 // Claude/Codex MCP configs often use the latter for readability.
@@ -134,14 +135,22 @@ async function callChild(method, params) {
   });
 }
 
-// --- Server ---
-const server = createMcpServer({
+function send(message) {
+  process.stdout.write(`${JSON.stringify(message)}\n`);
+}
+
+function toMcpResult(result) {
+  return {
+    content: result.content || [{ type: "text", text: JSON.stringify(result) }],
+    structuredContent: result.structuredContent || undefined,
+  };
+}
+
+// --- Stage-aware exposure controller ---
+const exposure = createToolExposureRuntime({
   name: config.name,
-  version: "proxy-0.1.0",
-  listChanged: true,
   enableTaskContext: true,
   verbose: false,
-
   toolProvider: async (ctx) => {
     const tools = [];
     const handlers = [];
@@ -189,6 +198,77 @@ const server = createMcpServer({
 
     return { tools, handlers };
   },
+  onToolsChanged: async () => {
+    send({
+      jsonrpc: "2.0",
+      method: "notifications/tools/list_changed",
+      params: {},
+    });
+  },
 });
 
-server.run();
+async function handle(request) {
+  const { id, method, params } = request;
+
+  if (method === "initialize") {
+    await exposure.refreshTools();
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: {
+        protocolVersion: params?.protocolVersion || "2025-06-18",
+        capabilities: { tools: { listChanged: true } },
+        serverInfo: { name: config.name, version: "proxy-0.2.0" },
+      },
+    };
+  }
+
+  if (method === "tools/list") {
+    await exposure.refreshTools();
+    return { jsonrpc: "2.0", id, result: { tools: exposure.getTools() } };
+  }
+
+  if (method === "tools/call") {
+    const result = await exposure.callTool(params?.name, params?.arguments || {});
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: toMcpResult(result),
+    };
+  }
+
+  if (id === undefined) return null;
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: { code: -32601, message: `Method not found: ${method}` },
+  };
+}
+
+const rl = createInterface({ input: process.stdin });
+rl.on("line", async (line) => {
+  if (!line.trim()) return;
+
+  let request;
+  try {
+    request = JSON.parse(line);
+  } catch (error) {
+    send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32700, message: `Parse error: ${error.message}` },
+    });
+    return;
+  }
+
+  try {
+    const response = await handle(request);
+    if (response) send(response);
+  } catch (error) {
+    send({
+      jsonrpc: "2.0",
+      id: request.id ?? null,
+      error: { code: -32000, message: error.message },
+    });
+  }
+});

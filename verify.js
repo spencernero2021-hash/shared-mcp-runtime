@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Direct module verification — tests the runtime API without spawning.
- * The full JSON-RPC lifecycle test happens in Phase 1 (docx-mcp migration).
+ * Direct module verification for stage-aware tool exposure.
  */
 
 import { spawn } from "node:child_process";
-import { createMcpServer, classifyError, suggestionFor } from "./index.js";
+import { createToolExposureRuntime, classifyError, suggestionFor } from "./index.js";
 
 const PASS = [];
 const FAIL = [];
@@ -81,7 +80,7 @@ rl.on('line', line => {
 }
 
 async function main() {
-  console.log("=== Shared MCP Runtime — Module Verification ===\n");
+  console.log("=== Shared MCP Runtime — Tool Exposure Verification ===\n");
 
   // ====== 1. Error classification ======
   console.log("1. Error classification");
@@ -95,10 +94,9 @@ async function main() {
 
   // ====== 2. Server creation ======
   console.log("\n2. Server creation");
-  const server = createMcpServer({
+  const runtime = createToolExposureRuntime({
     name: "verify-test",
-    version: "0.1.0",
-    listChanged: true,
+    enableTaskContext: false,
     verbose: false,
     toolProvider: async (ctx) => ({
       tools: [{ name: "ping", description: "p", inputSchema: { type: "object", properties: {} } }],
@@ -106,27 +104,25 @@ async function main() {
     }),
   });
 
-  check("server object created", !!server);
-  check("has run method", typeof server.run === "function");
-  check("has updateTools method", typeof server.updateTools === "function");
-  check("has getTools method", typeof server.getTools === "function");
-  check("has getDomains method", typeof server.getDomains === "function");
+  check("runtime object created", !!runtime);
+  check("has refreshTools method", typeof runtime.refreshTools === "function");
+  check("has callTool method", typeof runtime.callTool === "function");
+  check("has getTools method", typeof runtime.getTools === "function");
+  check("has getDomains method", typeof runtime.getDomains === "function");
 
   // ====== 3. Tool loading via updateTools ======
   console.log("\n3. Tool loading (updateTools)");
-  check("tools empty before load", server.getTools().length === 0);
-  await server.updateTools();
-  const tools = server.getTools();
+  check("tools empty before load", runtime.getTools().length === 0);
+  await runtime.refreshTools();
+  const tools = runtime.getTools();
   check("tools loaded after updateTools", tools.length === 1);
   check("ping tool present", tools[0]?.name === "ping", JSON.stringify(tools));
   check("ping schema preserved", tools[0]?.inputSchema?.type === "object");
 
   // ====== 4. Domain expansion ======
   console.log("\n4. Domain expansion");
-  const domainServer = createMcpServer({
+  const domainRuntime = createToolExposureRuntime({
     name: "domain-test",
-    version: "0.1.0",
-    listChanged: true,
     toolProvider: async (ctx) => {
       const tools = [
         { name: "base", description: "Always visible", inputSchema: { type: "object", properties: {} } },
@@ -151,24 +147,19 @@ async function main() {
     },
   });
 
-  await domainServer.updateTools();
-  const d1 = domainServer.getTools().map((t) => t.name);
-  check("initial: only base", d1.length === 1 && d1[0] === "base", `got: ${d1}`);
-  check("initial domains empty", domainServer.getDomains().size === 0);
+  await domainRuntime.refreshTools();
+  const d1 = domainRuntime.getTools().map((t) => t.name);
+  check("initial: base plus control tools", d1.includes("base") && d1.includes("activate_domain"), `got: ${d1}`);
+  check("initial domains empty", domainRuntime.getDomains().size === 0);
 
-  // Simulate domain expansion (as a tool handler would)
-  // We can't call tool handlers directly, but we can test the ctx pattern
-  // Let's instead verify the re-entrant nature of updateTools
-  await domainServer.updateTools();
-  const d2 = domainServer.getTools().map((t) => t.name);
-  check("re-updateTools: still only base (no domain)", d2.length === 1 && d2[0] === "base", `got: ${d2}`);
+  await domainRuntime.callTool("base", {});
+  const d2 = domainRuntime.getTools().map((t) => t.name);
+  check("after expansion: secret visible", d2.includes("secret"), `got: ${d2}`);
 
   // ====== 5. Multiple domains ======
   console.log("\n5. Multiple domain isolation");
-  const multiServer = createMcpServer({
+  const multiRuntime = createToolExposureRuntime({
     name: "multi-test",
-    version: "0.1.0",
-    listChanged: true,
     toolProvider: async (ctx) => {
       const tools = [
         { name: "common", description: "Always", inputSchema: { type: "object", properties: {} } },
@@ -191,12 +182,12 @@ async function main() {
     },
   });
 
-  await multiServer.updateTools();
-  check("multi: only common initially", multiServer.getTools().length === 1);
-
-  // We can't trigger domain expansion without calling through a tool handler.
-  // But the ctx API is verified — tool handlers call ctx.expandDomain() which
-  // updates the domain set and triggers a tool list refresh.
+  await multiRuntime.refreshTools();
+  const m1 = multiRuntime.getTools().map((t) => t.name);
+  check("multi: common plus control tools initially", m1.includes("common") && m1.includes("activate_domain"), `got: ${m1}`);
+  await multiRuntime.activateDomain({ domain: "design" });
+  const m2 = multiRuntime.getTools().map((t) => t.name);
+  check("multi: design tools visible after activation", m2.includes("render_pptx") && !m2.includes("get_prices"), `got: ${m2}`);
 
   // ====== 6. Proxy smoke ======
   console.log("\n6. Proxy smoke");

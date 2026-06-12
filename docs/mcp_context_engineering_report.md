@@ -57,12 +57,12 @@
 ### 2.3 关键技术组件
 
 **共享运行时** (`shared-mcp-runtime/index.js`, ~400行)
-- 替代 9 个 MCP 的手写 JSON-RPC 样板代码
+- 抽象可复用的动态工具暴露与工具生命周期管理
 - 内置 `activate_domain`：简化的领域激活（二元开关）
 - 内置 `set_task_context`：带 `skill/goal/stage/language/file_type` 的完整上下文
 - 内置 `clear_task_context`：任务结束后返回 idle 状态
 - `enableTaskContext: true` → 自动注册上述三个工具
-- `listChanged: true` → 声明动态工具支持
+- `onToolsChanged` → 将工具列表变化交给宿主适配器处理
 - `ctx.task` → toolProvider 可见的阶段上下文
 - `action` 参数 → 设上下文 + 执行首工具，消除一轮延迟
 
@@ -218,7 +218,7 @@ idle → activate/set_task → work → clear_task → idle
 
 ```
 D:\Codex\New\shared-mcp-runtime\
-  index.js                    # 核心运行时 (~430行)：JSON-RPC, listChanged, enableTaskContext, action, clear
+  index.js                    # 核心工具暴露运行时：task context, dynamic tool gating, action, clear
   package.json                # npm 包定义
   verify.js                   # 模块验证（20项测试）
   mcp.proxy.js                # 通用 MCP 代理：不改源码加 idle 模式

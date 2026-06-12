@@ -1,7 +1,7 @@
 {
   "name": "@codex/shared-mcp-runtime",
-  "version": "0.2.0",
-  "description": "Shared JSON-RPC MCP runtime with list_changed support and domain-based tool filtering",
+  "version": "0.3.0",
+  "description": "Stage-aware MCP tool exposure runtime for reducing MCP Tax",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -18,6 +18,6 @@
     "README.md",
     "docs/"
   ],
-  "keywords": ["mcp", "json-rpc", "runtime", "claude-code"],
+  "keywords": ["mcp", "tool-exposure", "context-engineering", "agent", "claude-code"],
   "license": "MIT"
 }

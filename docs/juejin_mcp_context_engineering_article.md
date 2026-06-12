@@ -91,7 +91,6 @@ review        检查输出质量和格式
 
 它提供几个核心能力：
 
-- 统一 JSON-RPC MCP runtime
 - 支持 `notifications/tools/list_changed`
 - 内置 `activate_domain`
 - 内置 `set_task_context`
@@ -102,12 +101,10 @@ review        检查输出质量和格式
 一个最小化的 MCP server 可以这样写：
 
 ```js
-import { createMcpServer } from "@codex/shared-mcp-runtime";
+import { createToolExposureRuntime } from "@codex/shared-mcp-runtime";
 
-const server = createMcpServer({
+const exposure = createToolExposureRuntime({
   name: "example-mcp",
-  version: "0.1.0",
-  listChanged: true,
   enableTaskContext: true,
   toolProvider: async (ctx) => {
     if (!ctx.task.hasTask) {
@@ -149,7 +146,7 @@ const server = createMcpServer({
   },
 });
 
-server.run();
+await exposure.refreshTools();
 ```
 
 关键点在这里：
