@@ -62,6 +62,8 @@ if (!config.name || config.childArgs.length === 0) {
 // --- Spawn child MCP ---
 let childTools = [];
 let childReady = false;
+let childInitPromise = null;
+let childToolsPromise = null;
 let requestId = 0;
 const pending = new Map();
 
@@ -114,6 +116,10 @@ function sendToChild(req) {
   child.stdin.write(JSON.stringify(req) + "\n");
 }
 
+function notifyChild(method, params = {}) {
+  sendToChild({ jsonrpc: "2.0", method, params });
+}
+
 async function callChild(method, params) {
   const id = ++requestId;
   const req = { jsonrpc: "2.0", id, method, params };
@@ -133,6 +139,60 @@ async function callChild(method, params) {
       timeout,
     });
     sendToChild(req);
+  });
+}
+
+async function ensureChildReady() {
+  if (childReady) return;
+  if (childInitPromise) return childInitPromise;
+
+  childInitPromise = (async () => {
+    const initResp = await callChild("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "shared-mcp-proxy", version: "0.3.0" },
+    });
+
+    // Some MCP servers return warning-like init errors but still answer
+    // tools/list. Any response means the child process is alive and speaking
+    // JSON-RPC, so do not permanently hide it behind a strict init check.
+    childReady = true;
+    notifyChild("notifications/initialized");
+
+    if (initResp.error) {
+      process.stderr.write(
+        `[proxy:${config.name}] child init returned error but is alive: ` +
+        `${initResp.error.message?.substring(0, 120)}\n`
+      );
+    }
+  })().finally(() => {
+    childInitPromise = null;
+  });
+
+  return childInitPromise;
+}
+
+async function refreshChildTools() {
+  if (childToolsPromise) return childToolsPromise;
+
+  childToolsPromise = (async () => {
+    await ensureChildReady();
+    const tlResp = await callChild("tools/list", {});
+    if (tlResp.error) {
+      throw new Error(tlResp.error.message || "Child tools/list failed");
+    }
+    childTools = tlResp?.result?.tools || [];
+    return childTools;
+  })().finally(() => {
+    childToolsPromise = null;
+  });
+
+  return childToolsPromise;
+}
+
+function prewarmChildTools() {
+  refreshChildTools().catch((err) => {
+    process.stderr.write(`[proxy:${config.name}] child prewarm failed: ${err.message}\n`);
   });
 }
 
@@ -156,28 +216,28 @@ const exposure = createToolExposureRuntime({
     const tools = [];
     const handlers = [];
 
-    if (!childReady) {
-      try {
-        const initResp = await callChild("initialize", { protocolVersion: "2025-06-18" });
-        if (initResp.error) throw new Error(initResp.error.message);
-        childReady = true;
-      } catch (err) {
-        // Child might not be ready yet; return empty tools, will retry
-        return { tools: [], handlers: [] };
-      }
+    try {
+      await ensureChildReady();
+    } catch (err) {
+      // Child might not be ready yet; return empty tools, will retry.
+      process.stderr.write(`[proxy:${config.name}] child init failed: ${err.message}\n`);
+      return { tools: [], handlers: [] };
     }
 
     // Only expose child tools after task context or domain activation
     if (!ctx.task.hasTask && ctx.domains.size === 0) {
+      if (childTools.length === 0) prewarmChildTools();
       return { tools: [], handlers: [] };
     }
 
-    // Fetch child tools
-    try {
-      const tlResp = await callChild("tools/list", {});
-      childTools = tlResp?.result?.tools || [];
-    } catch {
-      // Keep previous child tools
+    // Fetch child tools once, then reuse the cached schema. This keeps
+    // activation fast after the idle-time prewarm has completed.
+    if (childTools.length === 0) {
+      try {
+        await refreshChildTools();
+      } catch (err) {
+        process.stderr.write(`[proxy:${config.name}] child tools/list failed: ${err.message}\n`);
+      }
     }
 
     for (const t of childTools) {
@@ -213,6 +273,7 @@ async function handle(request) {
 
   if (method === "initialize") {
     await exposure.refreshTools();
+    prewarmChildTools();
     return {
       jsonrpc: "2.0",
       id,
