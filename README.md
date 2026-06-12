@@ -7,6 +7,9 @@ schema overload. Instead of exposing every business tool as soon as an MCP
 server starts, it keeps the server in an idle state, exposes only control tools,
 and reveals task-specific tools only when the agent enters the relevant stage.
 
+The runtime is harness-agnostic. The installer includes a ClaudeCode-friendly
+adapter and generic/custom modes for other agent harnesses.
+
 The core idea is simple:
 
 ```text
@@ -144,7 +147,8 @@ npm exec --package shared-mcp-runtime@latest -- shared-mcp-install --interactive
 ```
 
 It asks for the MCP config path and the MCP you want to wrap, then writes the
-dynamic proxy entry for you.
+dynamic proxy entry for you. For ClaudeCode, it also installs the required
+global calling rule into `CLAUDE.md` by default.
 
 You can also use `shared-mcp-install` after global install:
 
@@ -169,6 +173,7 @@ Windows:
 
 ```powershell
 shared-mcp-install `
+  --harness claude-code `
   --config D:\ClaudeCode\.mcp.json `
   --preset playwright
 ```
@@ -194,6 +199,28 @@ shared-mcp-install `
 
 If the server name already exists, add `--force` to replace it. The installer
 creates a timestamped backup by default before writing the config.
+
+To install the MCP proxy without touching global instructions:
+
+```bash
+shared-mcp-install --config /path/to/.mcp.json --preset playwright --no-rule
+```
+
+For other harnesses, either provide a global instruction/memory path:
+
+```bash
+shared-mcp-install \
+  --harness custom \
+  --config /path/to/mcp.json \
+  --memory /path/to/global-instructions.md \
+  --preset playwright
+```
+
+Or print the rule and add it to your harness manually:
+
+```bash
+shared-mcp-install print-rule --harness generic
+```
 
 Advanced users can still pass the full child command:
 
@@ -231,6 +258,28 @@ Example `.mcp.json` entry:
   }
 }
 ```
+
+## Harness Rules
+
+Dynamic tool exposure changes the first-call pattern. The harness needs this
+rule somewhere in its global instructions:
+
+```text
+For stage-aware MCPs, avoid calling set_task_context alone and then calling a
+business tool in the same assistant turn. If the first business action is known,
+pass action and action_args inside set_task_context so the MCP refreshes
+internally and executes the first tool immediately.
+```
+
+ClaudeCode adapter:
+
+- MCP config: `.mcp.json`
+- Global rule: `CLAUDE.md` next to that config
+
+Generic/custom adapter:
+
+- MCP config: pass `--config`
+- Global rule: pass `--memory`, or use `print-rule`
 
 ## What This Is Not
 

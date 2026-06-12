@@ -99,10 +99,13 @@ async function runInstallerSmoke() {
 
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   const entry = config.mcpServers?.playwright;
+  const memoryPath = path.join(tempDir, "CLAUDE.md");
+  const memory = fs.existsSync(memoryPath) ? fs.readFileSync(memoryPath, "utf8") : "";
   return {
     ok: !!entry,
     command: entry?.command,
     args: entry?.args || [],
+    memory,
   };
 }
 
@@ -230,6 +233,7 @@ async function main() {
   check("installer uses node command", installer.command === "node", `got: ${installer.command}`);
   check("installer points at proxy", installer.args.some((arg) => String(arg).endsWith("mcp.proxy.js")), `got: ${installer.args}`);
   check("installer applies preset package", installer.args.includes("--child-arg=@playwright/mcp@latest"), `got: ${installer.args}`);
+  check("installer writes dynamic rule", installer.memory.includes("Dynamic MCP first-call rule"), "missing dynamic rule");
 
   // ====== Summary ======
   console.log(`\n=== Results: ${PASS.length} passed, ${FAIL.length} failed ===`);

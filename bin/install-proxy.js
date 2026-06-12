@@ -15,13 +15,22 @@ const PRESETS = {
   },
 };
 
+const SUPPORTED_HARNESSES = ["claude-code", "generic", "custom"];
+const RULE_START = "<!-- shared-mcp-runtime:dynamic-tool-rule:start -->";
+const RULE_END = "<!-- shared-mcp-runtime:dynamic-tool-rule:end -->";
+
 function usage() {
   console.log(`Usage:
-  shared-mcp-install --config <path-to-.mcp.json> --preset playwright
-  shared-mcp-install --config <path-to-.mcp.json> --name <server-name> --package <npm-package>
+  shared-mcp-install install --config <path-to-.mcp.json> --preset playwright
+  shared-mcp-install install --config <path-to-.mcp.json> --name <server-name> --package <npm-package>
+  shared-mcp-install install-rule --harness claude-code --config <path-to-.mcp.json>
+  shared-mcp-install print-rule --harness generic
 
 Options:
+  --harness <name>      Harness adapter. Available: ${SUPPORTED_HARNESSES.join(", ")} (default: claude-code)
   --config <path>       MCP config path, e.g. D:\\ClaudeCode\\.mcp.json
+  --memory <path>       Global instruction / memory file to update
+  --no-rule             Do not install the dynamic tool calling rule
   --preset <name>       Built-in preset. Available: ${Object.keys(PRESETS).join(", ")}
   --name <name>         MCP server name to install or update
   --package <pkg>       NPM MCP package, e.g. @playwright/mcp@latest
@@ -36,11 +45,15 @@ Options:
   --help               Show this help
 
 Example:
-  shared-mcp-install --config D:\\ClaudeCode\\.mcp.json --preset playwright
-  shared-mcp-install --config D:\\ClaudeCode\\.mcp.json --name playwright --package @playwright/mcp@latest
+  shared-mcp-install install --config D:\\ClaudeCode\\.mcp.json --preset playwright
+  shared-mcp-install install --config D:\\ClaudeCode\\.mcp.json --name playwright --package @playwright/mcp@latest
 
 Interactive:
   shared-mcp-install --interactive
+
+Rules only:
+  shared-mcp-install print-rule --harness generic
+  shared-mcp-install install-rule --harness claude-code --config D:\\ClaudeCode\\.mcp.json
 `);
 }
 
@@ -89,12 +102,21 @@ function splitCommandLine(input) {
 }
 
 function parseArgs(argv) {
+  let command = "install";
+  if (argv[0] && !argv[0].startsWith("-")) {
+    command = argv[0];
+    argv = argv.slice(1);
+  }
+
   const out = {
+    command,
+    harness: "claude-code",
     childArgs: [],
     packageArgs: [],
     force: false,
     dryRun: false,
     backup: true,
+    installRule: true,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -112,8 +134,16 @@ function parseArgs(argv) {
       out.dryRun = true;
     } else if (key === "--no-backup") {
       out.backup = false;
+    } else if (key === "--no-rule") {
+      out.installRule = false;
+    } else if (key === "--harness") {
+      out.harness = value;
+      if (inlineValue === undefined) i++;
     } else if (key === "--config") {
       out.configPath = value;
+      if (inlineValue === undefined) i++;
+    } else if (key === "--memory" || key === "--memory-path" || key === "--rule-path") {
+      out.memoryPath = value;
       if (inlineValue === undefined) i++;
     } else if (key === "--preset") {
       out.preset = value;
@@ -141,6 +171,12 @@ function parseArgs(argv) {
     }
   }
 
+  if (!["install", "install-rule", "print-rule"].includes(out.command)) {
+    throw new Error(`Unknown command: ${out.command}`);
+  }
+  if (!SUPPORTED_HARNESSES.includes(out.harness)) {
+    throw new Error(`Unknown harness: ${out.harness}. Available harnesses: ${SUPPORTED_HARNESSES.join(", ")}`);
+  }
   applyPresetAndPackage(out);
   return out;
 }
@@ -212,6 +248,58 @@ function backupConfig(configPath) {
   return backupPath;
 }
 
+function dynamicToolRule(harness = "generic") {
+  const prefix = harness === "claude-code"
+    ? "- **Dynamic MCP first-call rule**:"
+    : "- Dynamic MCP first-call rule:";
+  return `${RULE_START}
+${prefix} For stage-aware MCPs, avoid calling \`set_task_context\` alone and then calling a business tool in the same assistant turn. If the first business action is known, pass \`action\` and \`action_args\` inside \`set_task_context\` so the MCP refreshes internally and executes the first tool immediately. After the tool list refreshes, direct business tool calls are fine.
+${RULE_END}`;
+}
+
+function defaultMemoryPath(options = {}) {
+  if (options.memoryPath) return path.resolve(options.memoryPath);
+  if (options.harness === "claude-code" && options.configPath) {
+    return path.join(path.dirname(path.resolve(options.configPath)), "CLAUDE.md");
+  }
+  return null;
+}
+
+function upsertMarkedBlock(current, block) {
+  const start = current.indexOf(RULE_START);
+  const end = current.indexOf(RULE_END);
+  if (start !== -1 && end !== -1 && end > start) {
+    const before = current.slice(0, start).trimEnd();
+    const after = current.slice(end + RULE_END.length).trimStart();
+    return `${before}\n\n${block}\n\n${after}`.trim() + "\n";
+  }
+  return `${current.trimEnd()}\n\n${block}\n`.trimStart();
+}
+
+function writeRule(options) {
+  const memoryPath = defaultMemoryPath(options);
+  const block = dynamicToolRule(options.harness);
+
+  if (!memoryPath) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "No memory path for this harness. Pass --memory <path> or use print-rule.",
+      block,
+    };
+  }
+
+  if (options.dryRun) {
+    return { ok: true, dryRun: true, memoryPath, block };
+  }
+
+  fs.mkdirSync(path.dirname(memoryPath), { recursive: true });
+  const current = fs.existsSync(memoryPath) ? fs.readFileSync(memoryPath, "utf8") : "";
+  const backupPath = options.backup && fs.existsSync(memoryPath) ? backupConfig(memoryPath) : null;
+  fs.writeFileSync(memoryPath, upsertMarkedBlock(current, block), "utf8");
+  return { ok: true, memoryPath, backupPath };
+}
+
 function defaultConfigPath() {
   const candidates = [];
   if (process.platform === "win32") {
@@ -244,6 +332,7 @@ async function promptForOptions(options) {
     };
 
     options.configPath ||= await ask("MCP config path", defaultConfigPath());
+    options.harness ||= await ask("Harness", "claude-code");
     const installTarget = await ask("Preset or npm package", options.preset || options.packageName || "playwright");
     if (PRESETS[installTarget]) {
       options.preset = installTarget;
@@ -265,6 +354,10 @@ async function promptForOptions(options) {
     if (existingConfig.mcpServers?.[options.name] && !options.force) {
       options.force = await yesNo(`MCP server '${options.name}' already exists. Replace it`, false);
     }
+    options.installRule = await yesNo("Install dynamic tool calling rule", options.installRule);
+    if (options.installRule && options.harness !== "claude-code" && !options.memoryPath) {
+      options.memoryPath = await ask("Global instruction / memory file path", "");
+    }
     options.backup = await yesNo("Create backup before writing", options.backup);
   } finally {
     rl.close();
@@ -279,8 +372,33 @@ async function main() {
     return;
   }
 
+  if (options.command === "print-rule") {
+    console.log(dynamicToolRule(options.harness));
+    return;
+  }
+
   if (options.interactive) {
     await promptForOptions(options);
+  }
+
+  if (options.command === "install-rule") {
+    if (!options.configPath && !options.memoryPath && options.harness === "claude-code") {
+      options.configPath = defaultConfigPath();
+    }
+    const ruleResult = writeRule(options);
+    if (ruleResult.dryRun) {
+      console.log(`Would update memory file: ${ruleResult.memoryPath}`);
+      console.log(ruleResult.block);
+      return;
+    }
+    if (ruleResult.ok) {
+      console.log(`Installed dynamic tool calling rule into ${ruleResult.memoryPath}`);
+      if (ruleResult.backupPath) console.log(`Memory backup: ${ruleResult.backupPath}`);
+    } else {
+      console.log(ruleResult.reason);
+      console.log(ruleResult.block);
+    }
+    return;
   }
 
   requireValue(options, "configPath");
@@ -302,6 +420,12 @@ async function main() {
 
   if (options.dryRun) {
     process.stdout.write(output);
+    if (options.installRule) {
+      const ruleResult = writeRule(options);
+      console.log("\n--- Dynamic Tool Calling Rule ---");
+      if (ruleResult.memoryPath) console.log(`Memory file: ${ruleResult.memoryPath}`);
+      console.log(ruleResult.block);
+    }
     return;
   }
 
@@ -311,6 +435,19 @@ async function main() {
 
   console.log(`Installed dynamic MCP proxy '${options.name}' into ${configPath}`);
   if (backupPath) console.log(`Backup: ${backupPath}`);
+
+  if (options.installRule) {
+    const ruleResult = writeRule(options);
+    if (ruleResult.ok) {
+      console.log(`Installed dynamic tool calling rule into ${ruleResult.memoryPath}`);
+      if (ruleResult.backupPath) console.log(`Memory backup: ${ruleResult.backupPath}`);
+    } else {
+      console.log(ruleResult.reason);
+      console.log("Add this rule to your harness global instructions:");
+      console.log(ruleResult.block);
+    }
+  }
+
   console.log("Restart or refresh your MCP host to load the updated config.");
 }
 

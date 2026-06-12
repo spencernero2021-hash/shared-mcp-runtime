@@ -1,6 +1,6 @@
 {
   "name": "shared-mcp-runtime",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Stage-aware MCP tool exposure runtime for reducing MCP Tax",
   "type": "module",
   "main": "index.js",
