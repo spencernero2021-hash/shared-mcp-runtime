@@ -129,6 +129,41 @@ node ./mcp.proxy.js \
 On Windows, use `npx.cmd` as the child command if your MCP host does not resolve
 `.cmd` shims automatically.
 
+## One-Command Install
+
+Use `shared-mcp-install` to write a dynamic proxy entry into an MCP config file.
+It wraps an existing child MCP server without changing the child server's source
+code.
+
+```bash
+shared-mcp-install \
+  --config /path/to/.mcp.json \
+  --name playwright \
+  --child-cmd npx \
+  --child-arg -y \
+  --child-arg @playwright/mcp@latest
+```
+
+Windows example:
+
+```powershell
+shared-mcp-install `
+  --config D:\ClaudeCode\.mcp.json `
+  --name playwright `
+  --child-cmd npx.cmd `
+  --child-arg -y `
+  --child-arg @playwright/mcp@latest
+```
+
+If the server name already exists, add `--force` to replace it. The installer
+creates a timestamped backup by default before writing the config.
+
+For local development without a global install:
+
+```bash
+node ./bin/install-proxy.js --config /path/to/.mcp.json --name playwright --child-cmd npx --child-arg -y --child-arg @playwright/mcp@latest
+```
+
 Example `.mcp.json` entry:
 
 ```json

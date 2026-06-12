@@ -4,8 +4,11 @@
   "description": "Stage-aware MCP tool exposure runtime for reducing MCP Tax",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "shared-mcp-install": "./bin/install-proxy.js"
+  },
   "scripts": {
-    "check": "node --check index.js && node --check mcp.proxy.js && node --check verify.js",
+    "check": "node --check index.js && node --check mcp.proxy.js && node --check verify.js && node --check bin/install-proxy.js",
     "test": "node verify.js"
   },
   "exports": {
@@ -14,6 +17,7 @@
   "files": [
     "index.js",
     "mcp.proxy.js",
+    "bin/",
     "verify.js",
     "README.md",
     "docs/"

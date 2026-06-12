@@ -5,6 +5,9 @@
  */
 
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createToolExposureRuntime, classifyError, suggestionFor } from "./index.js";
 
 const PASS = [];
@@ -76,6 +79,34 @@ rl.on('line', line => {
   return {
     idle: byId[2]?.result?.tools?.map((tool) => tool.name) || [],
     active: byId[4]?.result?.tools?.map((tool) => tool.name) || [],
+  };
+}
+
+async function runInstallerSmoke() {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "shared-mcp-runtime-"));
+  const configPath = path.join(tempDir, ".mcp.json");
+  const child = spawn(process.execPath, [
+    "bin/install-proxy.js",
+    "--config",
+    configPath,
+    "--name",
+    "dummy",
+    "--child-cmd",
+    "node",
+    "--child-arg",
+    "dummy-child.js",
+    "--no-backup",
+  ], { cwd: new URL(".", import.meta.url), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+
+  const exitCode = await new Promise((resolve) => child.on("close", resolve));
+  if (exitCode !== 0) return { ok: false, error: `installer exited ${exitCode}` };
+
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const entry = config.mcpServers?.dummy;
+  return {
+    ok: !!entry,
+    command: entry?.command,
+    args: entry?.args || [],
   };
 }
 
@@ -195,6 +226,14 @@ async function main() {
   check("proxy idle exposes control tools only", proxy.idle.length === 2 && proxy.idle.includes("activate_domain") && proxy.idle.includes("set_task_context"), `got: ${proxy.idle}`);
   check("proxy active exposes child tool", proxy.active.includes("dummy_tool"), `got: ${proxy.active}`);
   check("proxy active exposes clear_task_context", proxy.active.includes("clear_task_context"), `got: ${proxy.active}`);
+
+  // ====== 7. Installer smoke ======
+  console.log("\n7. Installer smoke");
+  const installer = await runInstallerSmoke();
+  check("installer writes config entry", installer.ok, installer.error || "");
+  check("installer uses node command", installer.command === "node", `got: ${installer.command}`);
+  check("installer points at proxy", installer.args.some((arg) => String(arg).endsWith("mcp.proxy.js")), `got: ${installer.args}`);
+  check("installer preserves child command", installer.args.includes("--child-cmd=node"), `got: ${installer.args}`);
 
   // ====== Summary ======
   console.log(`\n=== Results: ${PASS.length} passed, ${FAIL.length} failed ===`);
