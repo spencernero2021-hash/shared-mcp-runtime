@@ -14,7 +14,7 @@ Lightweight JSON-RPC runtime for MCP servers with stage-aware tool exposure.
 ## Basic Usage
 
 ```js
-import { createMcpServer } from "../shared-mcp-runtime/index.js";
+import { createMcpServer } from "@codex/shared-mcp-runtime";
 
 const server = createMcpServer({
   name: "example-mcp",
@@ -48,12 +48,33 @@ server.run();
 
 Both separated and equals-style arguments are supported:
 
-```powershell
-node D:\Codex\New\shared-mcp-runtime\mcp.proxy.js `
-  --name=playwright `
-  --child-cmd=npx.cmd `
-  --child-arg=-y `
+```bash
+node ./mcp.proxy.js \
+  --name=playwright \
+  --child-cmd=npx \
+  --child-arg=-y \
   --child-arg=@playwright/mcp@latest
+```
+
+On Windows, use `npx.cmd` as the child command if your MCP host does not resolve `.cmd` shims automatically.
+
+Example `.mcp.json` entry:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "node",
+      "args": [
+        "path/to/shared-mcp-runtime/mcp.proxy.js",
+        "--name=playwright",
+        "--child-cmd=npx",
+        "--child-arg=-y",
+        "--child-arg=@playwright/mcp@latest"
+      ]
+    }
+  }
+}
 ```
 
 ## Verify

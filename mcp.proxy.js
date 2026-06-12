@@ -10,16 +10,16 @@
  * Usage in .mcp.json:
  *   {
  *     "command": "node",
- *     "args": ["D:\\Codex\\New\\shared-mcp-runtime\\mcp.proxy.js",
+ *     "args": ["path/to/shared-mcp-runtime/mcp.proxy.js",
  *              "--name=antigravity-gemini-mcp",
- *              "--child-cmd=D:\\nodejs\\node.exe",
- *              "--child-arg=D:\\Codex\\New\\antigravity-gemini-mcp\\index.js"]
+ *              "--child-cmd=node",
+ *              "--child-arg=path/to/antigravity-gemini-mcp/index.js"]
  *   }
  *
  * Or for npx-based MCPs:
  *   {
  *     "command": "node",
- *     "args": ["D:\\Codex\\New\\shared-mcp-runtime\\mcp.proxy.js",
+ *     "args": ["path/to/shared-mcp-runtime/mcp.proxy.js",
  *              "--name=playwright",
  *              "--child-cmd=npx.cmd",
  *              "--child-arg=-y",

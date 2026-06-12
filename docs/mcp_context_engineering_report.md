@@ -212,6 +212,8 @@ idle → activate/set_task → work → clear_task → idle
 
 ## 8. 关键文件路径
 
+以下路径来自原实验环境，仅用于说明项目组织方式。复现时请替换为自己的工作目录。
+
 ### 共享运行时
 
 ```
@@ -310,5 +312,5 @@ D:\ClaudeCode\
 
 ---
 
-*本文档伴随 [MCP 上下文工程优化计划](C:\Users\沈云浩\.claude\plans\a-b-b-c-c-agent-routing-skill-market-gleaming-puppy.md) 使用。*
+*本文档伴随 MCP 上下文工程优化计划使用。*
 
