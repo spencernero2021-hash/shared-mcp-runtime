@@ -89,10 +89,8 @@ async function runInstallerSmoke() {
     "bin/install-proxy.js",
     "--config",
     configPath,
-    "--name",
-    "dummy",
-    "--child",
-    "node dummy-child.js",
+    "--preset",
+    "playwright",
     "--no-backup",
   ], { cwd: new URL(".", import.meta.url), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 
@@ -100,7 +98,7 @@ async function runInstallerSmoke() {
   if (exitCode !== 0) return { ok: false, error: `installer exited ${exitCode}` };
 
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const entry = config.mcpServers?.dummy;
+  const entry = config.mcpServers?.playwright;
   return {
     ok: !!entry,
     command: entry?.command,
@@ -231,7 +229,7 @@ async function main() {
   check("installer writes config entry", installer.ok, installer.error || "");
   check("installer uses node command", installer.command === "node", `got: ${installer.command}`);
   check("installer points at proxy", installer.args.some((arg) => String(arg).endsWith("mcp.proxy.js")), `got: ${installer.args}`);
-  check("installer preserves child command", installer.args.includes("--child-cmd=node"), `got: ${installer.args}`);
+  check("installer applies preset package", installer.args.includes("--child-arg=@playwright/mcp@latest"), `got: ${installer.args}`);
 
   // ====== Summary ======
   console.log(`\n=== Results: ${PASS.length} passed, ${FAIL.length} failed ===`);

@@ -143,8 +143,8 @@ Equivalent npm exec form:
 npm exec --package shared-mcp-runtime@latest -- shared-mcp-install --interactive
 ```
 
-It asks for the MCP config path, server name, and the original child MCP command,
-then writes the dynamic proxy entry for you.
+It asks for the MCP config path and the MCP you want to wrap, then writes the
+dynamic proxy entry for you.
 
 You can also use `shared-mcp-install` after global install:
 
@@ -157,39 +157,60 @@ For scripted setup, pass all values directly. The installer writes a dynamic
 proxy entry into an MCP config file and wraps an existing child MCP server
 without changing the child server's source code.
 
+Install Playwright with a preset:
+
 ```bash
 shared-mcp-install \
   --config /path/to/.mcp.json \
-  --name playwright \
-  --child-cmd npx \
-  --child-arg -y \
-  --child-arg @playwright/mcp@latest
+  --preset playwright
 ```
 
-Windows example:
+Windows:
 
 ```powershell
 shared-mcp-install `
   --config D:\ClaudeCode\.mcp.json `
-  --name playwright `
-  --child-cmd npx.cmd `
-  --child-arg -y `
-  --child-arg @playwright/mcp@latest
+  --preset playwright
+```
+
+Install any npm-based MCP package:
+
+```bash
+shared-mcp-install \
+  --config /path/to/.mcp.json \
+  --name my-mcp \
+  --package some-mcp-package
+```
+
+If the package needs extra arguments, append them with `--package-arg`:
+
+```powershell
+shared-mcp-install `
+  --config D:\ClaudeCode\.mcp.json `
+  --name filesystem `
+  --package @modelcontextprotocol/server-filesystem `
+  --package-arg D:\ClaudeCode\project
 ```
 
 If the server name already exists, add `--force` to replace it. The installer
 creates a timestamped backup by default before writing the config.
 
+Advanced users can still pass the full child command:
+
+```bash
+shared-mcp-install --config /path/to/.mcp.json --name playwright --child "npx -y @playwright/mcp@latest"
+```
+
 For local development without a global install:
 
 ```bash
-node ./bin/install-proxy.js --config /path/to/.mcp.json --name playwright --child-cmd npx --child-arg -y --child-arg @playwright/mcp@latest
+node ./bin/install-proxy.js --config /path/to/.mcp.json --preset playwright
 ```
 
 You can preview without writing:
 
 ```bash
-npx shared-mcp-runtime@latest --config /path/to/.mcp.json --name playwright --child "npx -y @playwright/mcp@latest" --dry-run
+npx shared-mcp-runtime@latest --config /path/to/.mcp.json --preset playwright --dry-run
 ```
 
 Example `.mcp.json` entry:

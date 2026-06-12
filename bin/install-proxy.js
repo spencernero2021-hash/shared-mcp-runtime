@@ -8,13 +8,24 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const proxyPath = path.resolve(__dirname, "../mcp.proxy.js");
 
+const PRESETS = {
+  playwright: {
+    name: "playwright",
+    packageName: "@playwright/mcp@latest",
+  },
+};
+
 function usage() {
   console.log(`Usage:
-  shared-mcp-install --config <path-to-.mcp.json> --name <server-name> --child-cmd <cmd> --child-arg <arg>...
+  shared-mcp-install --config <path-to-.mcp.json> --preset playwright
+  shared-mcp-install --config <path-to-.mcp.json> --name <server-name> --package <npm-package>
 
 Options:
   --config <path>       MCP config path, e.g. D:\\ClaudeCode\\.mcp.json
+  --preset <name>       Built-in preset. Available: ${Object.keys(PRESETS).join(", ")}
   --name <name>         MCP server name to install or update
+  --package <pkg>       NPM MCP package, e.g. @playwright/mcp@latest
+  --package-arg <arg>   Extra argument passed after the package. Repeat as needed.
   --child-cmd <cmd>     Child MCP command, e.g. npx.cmd, node, python
   --child-arg <arg>     Child MCP argument. Repeat for each argument.
   --child <command>     Full child command line, e.g. "npx.cmd -y @playwright/mcp@latest"
@@ -25,11 +36,16 @@ Options:
   --help               Show this help
 
 Example:
-  shared-mcp-install --config D:\\ClaudeCode\\.mcp.json --name playwright --child-cmd npx.cmd --child-arg -y --child-arg @playwright/mcp@latest
+  shared-mcp-install --config D:\\ClaudeCode\\.mcp.json --preset playwright
+  shared-mcp-install --config D:\\ClaudeCode\\.mcp.json --name playwright --package @playwright/mcp@latest
 
 Interactive:
   shared-mcp-install --interactive
 `);
+}
+
+function npxCommand() {
+  return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
 function splitCommandLine(input) {
@@ -75,6 +91,7 @@ function splitCommandLine(input) {
 function parseArgs(argv) {
   const out = {
     childArgs: [],
+    packageArgs: [],
     force: false,
     dryRun: false,
     backup: true,
@@ -98,8 +115,17 @@ function parseArgs(argv) {
     } else if (key === "--config") {
       out.configPath = value;
       if (inlineValue === undefined) i++;
+    } else if (key === "--preset") {
+      out.preset = value;
+      if (inlineValue === undefined) i++;
     } else if (key === "--name") {
       out.name = value;
+      if (inlineValue === undefined) i++;
+    } else if (key === "--package") {
+      out.packageName = value;
+      if (inlineValue === undefined) i++;
+    } else if (key === "--package-arg") {
+      out.packageArgs.push(value);
       if (inlineValue === undefined) i++;
     } else if (key === "--child-cmd") {
       out.childCmd = value;
@@ -115,13 +141,38 @@ function parseArgs(argv) {
     }
   }
 
+  applyPresetAndPackage(out);
+  return out;
+}
+
+function inferNameFromPackage(packageName) {
+  const withoutVersion = packageName.replace(/@[^/@]+$/u, "");
+  if (withoutVersion.includes("playwright/mcp")) return "playwright";
+  const parts = withoutVersion.split("/");
+  return parts.at(-1)?.replace(/^server-/u, "").replace(/[^a-z0-9_-]/giu, "-") || "mcp";
+}
+
+function applyPresetAndPackage(out) {
+  if (out.preset) {
+    const preset = PRESETS[out.preset];
+    if (!preset) {
+      throw new Error(`Unknown preset: ${out.preset}. Available presets: ${Object.keys(PRESETS).join(", ")}`);
+    }
+    out.name ||= preset.name;
+    out.packageName ||= preset.packageName;
+  }
+
+  if (out.packageName && !out.childCmd && out.childArgs.length === 0) {
+    out.name ||= inferNameFromPackage(out.packageName);
+    out.childCmd = npxCommand();
+    out.childArgs = ["-y", out.packageName, ...out.packageArgs];
+  }
+
   if (out.child) {
     const parts = splitCommandLine(out.child);
     out.childCmd = out.childCmd || parts[0];
     if (out.childArgs.length === 0) out.childArgs = parts.slice(1);
   }
-
-  return out;
 }
 
 function requireValue(options, key) {
@@ -172,9 +223,9 @@ function defaultConfigPath() {
 
 function defaultChildCommand(name) {
   if (name === "playwright") {
-    return process.platform === "win32" ? "npx.cmd -y @playwright/mcp@latest" : "npx -y @playwright/mcp@latest";
+    return `${npxCommand()} -y @playwright/mcp@latest`;
   }
-  return process.platform === "win32" ? "npx.cmd -y <mcp-package>" : "npx -y <mcp-package>";
+  return `${npxCommand()} -y <mcp-package>`;
 }
 
 async function promptForOptions(options) {
@@ -193,6 +244,13 @@ async function promptForOptions(options) {
     };
 
     options.configPath ||= await ask("MCP config path", defaultConfigPath());
+    const installTarget = await ask("Preset or npm package", options.preset || options.packageName || "playwright");
+    if (PRESETS[installTarget]) {
+      options.preset = installTarget;
+    } else {
+      options.packageName = installTarget;
+    }
+    applyPresetAndPackage(options);
     options.name ||= await ask("MCP server name", "playwright");
 
     if (!options.childCmd || options.childArgs.length === 0) {
