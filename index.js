@@ -1,5 +1,3 @@
-import { createInterface } from "node:readline";
-
 /**
  * shared-mcp-runtime
  *
@@ -382,115 +380,11 @@ function createToolExposureRuntime(options) {
   };
 }
 
-// Deprecated compatibility adapter for existing local MCP servers.
-// New integrations should wire createToolExposureRuntime into their preferred
-// MCP SDK/transport layer instead of treating this adapter as the core API.
-function createMcpServer(options) {
-  const {
-    name,
-    version,
-    listChanged = false,
-  } = options;
-
-  const exposure = createToolExposureRuntime({
-    ...options,
-    onToolsChanged: async () => {
-      if (!listChanged) return;
-      send({
-        jsonrpc: "2.0",
-        method: "notifications/tools/list_changed",
-        params: {},
-      });
-    },
-  });
-
-  function send(message) {
-    process.stdout.write(`${JSON.stringify(message)}\n`);
-  }
-
-  function toMcpResult(result) {
-    return {
-      content: result.content || [{ type: "text", text: JSON.stringify(result) }],
-      structuredContent: result.structuredContent || undefined,
-    };
-  }
-
-  async function handle(request) {
-    const { id, method, params } = request;
-
-    if (method === "initialize") {
-      await exposure.refreshTools();
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          protocolVersion: params?.protocolVersion || "2025-06-18",
-          capabilities: { tools: listChanged ? { listChanged: true } : {} },
-          serverInfo: { name, version },
-        },
-      };
-    }
-
-    if (method === "tools/list") {
-      await exposure.refreshTools();
-      return { jsonrpc: "2.0", id, result: { tools: exposure.getTools() } };
-    }
-
-    if (method === "tools/call") {
-      const result = await exposure.callTool(params?.name, params?.arguments || {});
-      return { jsonrpc: "2.0", id, result: toMcpResult(result) };
-    }
-
-    if (id === undefined) return null;
-    return {
-      jsonrpc: "2.0",
-      id,
-      error: { code: -32601, message: `Method not found: ${method}` },
-    };
-  }
-
-  async function run() {
-    const rl = createInterface({ input: process.stdin });
-    rl.on("line", async (line) => {
-      if (!line.trim()) return;
-
-      let request;
-      try {
-        request = JSON.parse(line);
-      } catch (error) {
-        send({
-          jsonrpc: "2.0",
-          id: null,
-          error: { code: -32700, message: `Parse error: ${error.message}` },
-        });
-        return;
-      }
-
-      try {
-        const response = await handle(request);
-        if (response) send(response);
-      } catch (error) {
-        send({
-          jsonrpc: "2.0",
-          id: request.id ?? null,
-          error: { code: -32000, message: error.message },
-        });
-      }
-    });
-  }
-
-  return {
-    ...exposure,
-    run,
-  };
-}
-
 export {
   ACTIVATE_DOMAIN_TOOL,
   SET_TASK_CONTEXT_TOOL,
   CLEAR_TASK_CONTEXT_TOOL,
   createToolExposureRuntime,
-  createMcpServer,
   classifyError,
   suggestionFor,
 };
