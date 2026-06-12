@@ -5,10 +5,10 @@
   "type": "module",
   "main": "index.js",
   "bin": {
-    "shared-mcp-install": "./bin/install-proxy.js"
+    "shared-mcp-install": "bin/shared-mcp-install.js"
   },
   "scripts": {
-    "check": "node --check index.js && node --check mcp.proxy.js && node --check verify.js && node --check bin/install-proxy.js",
+    "check": "node --check index.js && node --check mcp.proxy.js && node --check verify.js && node --check bin/install-proxy.js && node --check bin/shared-mcp-install.js",
     "test": "node verify.js"
   },
   "exports": {
@@ -20,12 +20,19 @@
   "files": [
     "index.js",
     "mcp.proxy.js",
-    "bin/",
+    "bin/install-proxy.js",
+    "bin/shared-mcp-install.js",
     "verify.js",
     "README.md",
     "docs/"
   ],
-  "keywords": ["mcp", "tool-exposure", "context-engineering", "agent", "claude-code"],
+  "keywords": [
+    "mcp",
+    "tool-exposure",
+    "context-engineering",
+    "agent",
+    "claude-code"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/spencernero2021-hash/shared-mcp-runtime.git"
